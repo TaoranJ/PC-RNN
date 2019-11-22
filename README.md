@@ -1,10 +1,25 @@
 # PC-RNN
 
-This repo is an implementation of PC-RNN proposed in paper "Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks".
+A `Pytorch` implementation of PC-RNN proposed in paper "Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks".
+
+## Usage
+
+```bash
+`Pytorch` and `numpy` are required to run the code.
+bash run.sh
+```
+
+See other parameters in `train.py`.
+
+## Paper Abstract
 
 **Title**: Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks
 
 **Abstract**: Modeling and forecasting forward citations to a patent is a central task for the discovery of emerging technologies and for measuring the pulse of inventive progress. Conventional methods for forecasting these forward citations cast the problem as analysis of temporal point processes which rely on the conditional intensity of previously received citations. Recent approaches model the conditional intensity as a chain of recurrent neural networks to capture memory dependency in hopes of reducing the restrictions of the parametric form of the intensity function. For the problem of patent citations, we observe that forecasting a patent’s chain of citations benefits from not only the patent’s history itself but also from the historical citations of assignees and inventors associated with that patent. In this paper, we propose a sequence-to-sequence model which employs an attention-of-attention mechanism to capture the dependencies of these multiple time sequences. Furthermore, the proposed model is able to forecast both the timestamp and the category of a patent’s next citation. Extensive experiments on a large patent citation dataset collected from USPTO demonstrate that the proposed model outperforms state-of-the-art models at forward citation forecasting.
+
+## Citing
+
+If you use the data and codes in this repo, please cite "[Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks](taoranj.github.io/files/ijcai2019.pdf)".
 
 ```bib
 @inproceedings{DBLP:conf/ijcai/JiCSFLR19,
