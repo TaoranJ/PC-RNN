@@ -19,7 +19,7 @@ See other parameters in `train.py`.
 
 ## Citing
 
-If you use the data and codes in this repo, please cite "[Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks](taoranj.github.io/files/ijcai2019.pdf)".
+If you used this repo in your research, please cite "[Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks](taoranj.github.io/files/ijcai2019.pdf)".
 
 ```bib
 @inproceedings{DBLP:conf/ijcai/JiCSFLR19,
