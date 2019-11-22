@@ -5,7 +5,7 @@ A `Pytorch` implementation of PC-RNN proposed in paper "Patent Citation Dynamics
 ## Usage
 
 ```bash
-`Pytorch` and `numpy` are required to run the code.
+# Pytorch and numpy are required to run the code.
 bash run.sh
 ```
 
