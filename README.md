@@ -42,3 +42,7 @@ If you used this repo in your research, please cite "[Patent Citation Dynamics M
   bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 ```
+
+## Copyright and License
+
+Codes in this repo released under MIT license.
