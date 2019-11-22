@@ -1,15 +1,14 @@
 # PC-RNN
 
-A `Pytorch` implementation of PC-RNN proposed in paper "Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks".
+The official `Pytorch` implementation of `PC-RNN` proposed in paper "Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks", IJCAI 2019.
 
-## Usage
+## Installation and Usage
 
-```bash
-# Pytorch and numpy are required to run the code.
-bash run.sh
-```
++ Install `Pytorch` (tested on 1.0.0), please refer to the [official website](https://pytorch.org/get-started/locally/) for further details.
++ Install `numpy`
 
-See other parameters in `train.py`.
+Multiple hyperparameters (e.g., dimension of hidden state) are available in the model, see `train.py` for details. Run `bash run.sh` for a quickstart.
+
 
 ## Paper Abstract
 
