@@ -253,7 +253,7 @@ def cal_loss(tgt_ts_output, tgt_cat_output, patent_tgt):
     cat_loss = sum(NLLLoss_mask(p, t, m)
                    for p, t, m in zip(tgt_cat_output, patent_tgt['pcat'],
                                       patent_tgt['mask']))
-    return ts_loss + cat_loss, ts_loss.item(), cat_loss.item()
+    return ts_loss + cat_loss
 
 
 def NLLLoss_mask(pred, target, mask):
@@ -311,14 +311,13 @@ def train_step(encoder, decoder, encoder_optim, decoder_optim, data):
                                                inventor)
     tgt_ts_output, tgt_cat_output = run_decoder(
             decoder, patent_src, patent_tgt, pencoder, aencoder, iencoder)
-    loss, ts_loss, cat_loss = cal_loss(tgt_ts_output, tgt_cat_output,
-                                       patent_tgt)
+    loss = cal_loss(tgt_ts_output, tgt_cat_output, patent_tgt)
     loss.backward()
     torch.nn.utils.clip_grad_norm_(encoder.parameters(), args.clip)
     torch.nn.utils.clip_grad_norm_(decoder.parameters(), args.clip)
     encoder_optim.step()
     decoder_optim.step()
-    return loss.item(), ts_loss, cat_loss
+    return loss.item()
 
 
 def time_since(since, m_padding=2, s_padding=2):
@@ -358,11 +357,9 @@ def train(encoder, decoder, encoder_optim, decoder_optim, dataloader,
     epoch_losses, epoch_ts_losses, epoch_cat_losses = [], [], []
     for epoch in range(1, args.epochs + 1):
         for batch in dataloader:
-            loss, ts_loss, cat_loss = train_step(
-                    encoder, decoder, encoder_optim, decoder_optim, batch)
+            loss = train_step(encoder, decoder, encoder_optim, decoder_optim,
+                              batch)
             epoch_loss += loss
-            epoch_ts_loss += ts_loss
-            epoch_cat_loss += cat_loss
         if args.tune_lr:
             encoder_scheduler.step(epoch_loss)
             decoder_scheduler.step(epoch_loss)
