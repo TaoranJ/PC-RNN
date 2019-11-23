@@ -4,14 +4,12 @@ import os
 import argparse
 import time
 import math
-import pickle
 
 import torch
-import torch.nn as nn
-import torch.optim as optim
+import torch.optim as optimizer
 
 from data import load_dataset, collate_fn
-from models import Encoder, Decoder
+from models import Encoder, Decoder, PCRNN
 
 pparser = argparse.ArgumentParser()
 # =============================================================================
@@ -93,33 +91,30 @@ args.train_len = sum([1 for batch in train_loader])  # len of training set
 # =============================================================================
 # =========================== Model initialization ============================
 # =============================================================================
-embedding = nn.Embedding(args.num_categories, args.embed_dim, padding_idx=0)
-encoder = Encoder(embedding=embedding,
+encoder = Encoder(num_categories=args.num_categories,
+                  embed_dim=args.embed_dim,
                   p_encoder_hidden_dim=args.pencoder_hidden_dim,
-                  o_encoder_hidden_dim=args.oencoder_hidden_dim).to(device)
-decoder = Decoder(embedding=embedding,
+                  o_encoder_hidden_dim=args.oencoder_hidden_dim)
+decoder = Decoder(num_categories=args.num_categories,
+                  embed_dim=args.embed_dim,
                   p_encoder_hidden_dim=args.pencoder_hidden_dim,
                   o_encoder_hidden_dim=args.oencoder_hidden_dim,
                   p_decoder_hidden_dim=args.decoder_hidden_dim,
-                  p_decoder_inner_dim=args.decoder_inner_dim).to(device)
+                  p_decoder_inner_dim=args.decoder_inner_dim)
+model = PCRNN(encoder, decoder).to(device)
 # =============================================================================
 # ========================= Optimizer initialization ==========================
 # =============================================================================
-encoder_optim = optim.Adam(encoder.parameters(), lr=args.lr,
-                           weight_decay=args.weight_decay)
-encoder_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        encoder_optim, patience=10, factor=.5, min_lr=.0005)
-decoder_optim = optim.Adam(decoder.parameters(), lr=args.lr,
-                           weight_decay=args.weight_decay)
-decoder_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        decoder_optim, patience=10, factor=.5, min_lr=.0005)
+optim = optimizer.Adam(model.parameters(), lr=args.lr,
+                       weight_decay=args.weight_decay)
+optim_scheduler = optimizer.lr_scheduler.ReduceLROnPlateau(
+        optim, patience=10, factor=.5, min_lr=.0005)
 generate_checkpoint_path()
+
 
 # =============================================================================
 # =============================== Train model =================================
 # =============================================================================
-
-
 def unzip_minibatch(data):
     """Unzip minibatch and load data to device.
 
@@ -154,78 +149,6 @@ def unzip_minibatch(data):
     inventor['ts'], inventor['org_idx'] = its.to(device), iorg_idx
     inventor['length'] = ilength.to(device)
     return patent_src, patent_tgt, assignee, inventor
-
-
-def run_encoder(encoder, patent_src, assignee, inventor):
-    """Run encoder.
-
-    Parameters
-    ----------
-    encoder : :class:`torch.nn.Module`
-        Encoder.
-    patent_src : dict
-        Minibatch data used on source side.
-    assignee : dict
-        Minibatch data for assignee series.
-    inventor : dict
-        Minibatch data for inventor series.
-
-    Returns
-    -------
-    pencoder : list
-        Outputs of patent chain encoder.
-    aencoder : list
-        Outputs of assignee chain encoder.
-    iencoder : list
-        Outputs of inventor chain encoder.
-
-    """
-
-    aencoder, iencoder = None, None
-    pencoder, aencoder, iencoder = encoder(patent_src, assignee, inventor)
-    return pencoder, aencoder, iencoder
-
-
-def run_decoder(decoder, patent_src, patent_tgt, pencoder, aencoder, iencoder):
-    """Run decoder.
-
-    Parameters
-    ----------
-    decoder : :class:`torch.nn.Module`
-        Decoder.
-    patent_src : dict
-        Minibatch data used on source side.
-    patent_tgt : dict
-        Minibatch data used on target side.
-    pencoder : list
-        Outputs of patent chain encoder.
-    aencoder : list
-        Outputs of assignee chain encoder.
-    iencoder : list
-        Outputs of inventor chain encoder.
-
-    Returns
-    -------
-    tgt_ts_output : :class:`torch.Tensor`
-        Timestamp predictions on target side.
-    tgt_cat_output : :class:`torch.Tensor`
-        Category predictions on target side.
-
-    """
-
-    tgt_ts_output, tgt_cat_output = [], []
-    ts = patent_src['pts'][-1].unsqueeze(0)
-    cat = patent_src['pcat'][-1].unsqueeze(0)
-    pencoder_outputs, phn, phc = pencoder
-    for t, _ in enumerate(patent_tgt['pts']):
-        ts, cat, phn, phc = decoder(ts, cat, phn, phc, pencoder_outputs,
-                                    aencoder, iencoder)
-        tgt_ts_output.append(ts)
-        tgt_cat_output.append(cat)
-        ts, cat = ts.squeeze(-1), cat.topk(1)[1].squeeze(-1)
-    tgt_ts_output = torch.cat(tgt_ts_output, dim=0)
-    tgt_cat_output = torch.cat(tgt_cat_output, dim=0)
-    return tgt_ts_output, tgt_cat_output
 
 
 def cal_loss(tgt_ts_output, tgt_cat_output, patent_tgt):
@@ -282,41 +205,32 @@ def NLLLoss_mask(pred, target, mask):
 
     pred = torch.gather(pred, 1, target.view(-1, 1))
     cross_entropy = - pred.squeeze(1)
-    loss = cross_entropy.masked_select(mask).sum()  # only non-pad targets
+    loss = cross_entropy.masked_select(mask).sum()
     return loss
 
 
-def train_step(encoder, decoder, encoder_optim, decoder_optim, data):
+def train_step(model, optim, data):
     """One training step.
 
     Parameters
     ----------
-    encoder : :class:`torch.nn.Module`
-        Encoder.
-    decoder : :class:`torch.nn.Module`
-        Decoder.
-    encoder_optim : :class:`torch.optim.Optimizer`
-        Optimizer for encoder.
-    decoder_optim : :class:`torch.optim.Optimizer`
-        Optimizer for decoder
+    model : :class:`torch.nn.Module`
+        PCRNN.
+    optim : :class:`torch.optim.Optimizer`
+        Optimizer for PCRNN.
     data : list
         A minibatch of data.
 
     """
 
-    encoder_optim.zero_grad()
-    decoder_optim.zero_grad()
+    optim.zero_grad()
     patent_src, patent_tgt, assignee, inventor = unzip_minibatch(data)
-    pencoder, aencoder, iencoder = run_encoder(encoder, patent_src, assignee,
-                                               inventor)
-    tgt_ts_output, tgt_cat_output = run_decoder(
-            decoder, patent_src, patent_tgt, pencoder, aencoder, iencoder)
+    tgt_ts_output, tgt_cat_output = model(patent_src, assignee, inventor,
+                                          patent_tgt)
     loss = cal_loss(tgt_ts_output, tgt_cat_output, patent_tgt)
     loss.backward()
-    torch.nn.utils.clip_grad_norm_(encoder.parameters(), args.clip)
-    torch.nn.utils.clip_grad_norm_(decoder.parameters(), args.clip)
-    encoder_optim.step()
-    decoder_optim.step()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+    optim.step()
     return loss.item()
 
 
@@ -330,58 +244,39 @@ def time_since(since, m_padding=2, s_padding=2):
                             str(int(s)).zfill(s_padding))
 
 
-def train(encoder, decoder, encoder_optim, decoder_optim, dataloader,
-          encoder_scheduler, decoder_scheduler):
+def train(model, optim, dataloader, optim_scheduler):
     """Training.
 
     Parameters
     ----------
-    encoder : :class:`torch.nn.Module`
-        Encoder.
-    decoder : :class:`torch.nn.Module`
-        Decoder.
-    encoder_optim : :class:`torch.optim.Optimizer`
-        Optimizer for encoder.
-    decoder_optim : :class:`torch.optim.Optimizer`
-        Optimizer for decoder
+    model : :class:`torch.nn.Module`
+        PCRNN.
+    optim : :class:`torch.optim.Optimizer`
+        Optimizer for the model.
     dataloader : :class:`torch.utils.data.DataLoader`
         Dataloader for training set.
 
     """
 
-    encoder.train()
-    decoder.train()
+    model.train()
     start_epoch, best_epoch_loss, epoch_loss = time.time(), 1e15, 0
-    epoch_ts_loss, epoch_cat_loss = 0, 0
-    # record epoch loss over iterations
-    epoch_losses, epoch_ts_losses, epoch_cat_losses = [], [], []
+    epoch_losses = []
     for epoch in range(1, args.epochs + 1):
         for batch in dataloader:
-            loss = train_step(encoder, decoder, encoder_optim, decoder_optim,
-                              batch)
+            loss = train_step(model, optim, batch)
             epoch_loss += loss
         if args.tune_lr:
-            encoder_scheduler.step(epoch_loss)
-            decoder_scheduler.step(epoch_loss)
+            optim_scheduler.step(epoch_loss)
         print('[Epochs: {:02d}/{:02d}], Elapsed time: {} '
               'Loss: {:.4f}'.format(epoch, args.epochs,
                                     time_since(start_epoch), epoch_loss))
-        if epoch_loss <= best_epoch_loss:   # save the best
-            torch.save({'encoder': encoder.state_dict(),
-                        'decoder': decoder.state_dict()},
+        if epoch_loss <= best_epoch_loss:
+            torch.save({'model': encoder.state_dict()},
                        args.checkpoint_path + '.best')
             best_epoch_loss = epoch_loss
         epoch_losses.append(epoch_loss)
-        epoch_ts_losses.append(epoch_ts_loss)
-        epoch_cat_losses.append(epoch_cat_loss)
-        epoch_loss, epoch_ts_loss, epoch_cat_loss = 0, 0, 0
-    with open(args.checkpoint_path[:-4] + '.epochs.pkl', 'wb') as ofp:
-        pickle.dump(epoch_losses, ofp)
-    with open(args.checkpoint_path[:-4] + '.epochs_ts.pkl', 'wb') as ofp:
-        pickle.dump(epoch_ts_losses, ofp)
-    with open(args.checkpoint_path[:-4] + '.epochs_cat.pkl', 'wb') as ofp:
-        pickle.dump(epoch_cat_losses, ofp)
-    return encoder, decoder
+        epoch_loss = 0
+    return model
 
 
 # =============================================================================
@@ -432,15 +327,13 @@ def collect_results(tgt_ts_output, tgt_cat_output, patent_tgt):
     return mae, acc
 
 
-def evaluate_step(encoder, decoder, data):
+def evaluate_step(model, data):
     """Evaluation on one minibatch.
 
     Parameters
     ----------
-    encoder : :class:`torch.nn.Module`
-        Encoder.
-    decoder : :class:`torch.nn.Module`
-        Decoder.
+    model : :class:`torch.nn.Module`
+        PCRNN.
     data : dict
         One minibatch of data.
 
@@ -454,38 +347,31 @@ def evaluate_step(encoder, decoder, data):
     """
 
     patent_src, patent_tgt, assignee, inventor = unzip_minibatch(data)
-    pencoder, aencoder, iencoder = run_encoder(encoder, patent_src, assignee,
-                                               inventor)
-    tgt_ts_output, tgt_cat_output = run_decoder(
-            decoder, patent_src, patent_tgt, pencoder, aencoder, iencoder)
-    # calculate accuracy and MAE
+    tgt_ts_output, tgt_cat_output = model(patent_src, assignee, inventor,
+                                          patent_tgt)
     mae, acc = collect_results(tgt_ts_output, tgt_cat_output, patent_tgt)
     return mae, acc
 
 
-def evaluate(encoder, decoder, dataloader):
+def evaluate(model, dataloader):
     """Calculate mean absolute value and accuracy.
 
     Parameters
     ----------
-    encoder : :class:`torch.nn.Module`
-        Encoder.
-    decoder : :class:`torch.nn.Module`
-        Decoder.
+    model : :class:`torch.nn.Module`
+        PCRNN.
     dataloader : :class:`torch.utils.data.DataLoader`
         Dataloader for dataset to evaluate.
 
     """
 
     checkpoint = torch.load(args.checkpoint_path)
-    encoder.load_state_dict(checkpoint['encoder'])
-    decoder.load_state_dict(checkpoint['decoder'])
-    encoder.eval()
-    decoder.eval()
+    model.load_state_dict(checkpoint['model'])
+    model.eval()
     mae, acc = torch.tensor([0., 0.]), torch.tensor([0., 0.])
     with torch.no_grad():
         for batch in dataloader:
-            mae_step, acc_step = evaluate_step(encoder, decoder, batch)
+            mae_step, acc_step = evaluate_step(model, batch)
             mae += mae_step
             acc += acc_step
         with open(args.checkpoint_path[:-4] + '.eval.txt', 'a') as ofp:
@@ -499,28 +385,25 @@ def evaluate(encoder, decoder, dataloader):
 
 if os.path.exists(args.checkpoint_path):  # continue previous training
     checkpoint = torch.load(args.checkpoint_path)
-    encoder.load_state_dict(checkpoint['encoder'])
-    decoder.load_state_dict(checkpoint['decoder'])
-encoder, decoder = train(encoder, decoder, encoder_optim, decoder_optim,
-                         train_loader, encoder_scheduler,
-                         decoder_scheduler)
-torch.save({'encoder': encoder.state_dict(),
-            'decoder': decoder.state_dict()}, args.checkpoint_path)
+    model.load_state_dict(checkpoint['model'])
+model = train(model, optim, train_loader, optim_scheduler)
+torch.save({'model': model.state_dict()}, args.checkpoint_path)
 
 if args.eval_train or args.eval_test:   # evaluate
     if args.use_best:
         args.checkpoint_path = args.checkpoint_path + '.best'
-    embedding = nn.Embedding(args.num_categories, args.embed_dim,
-                             padding_idx=0).to(device)
-    encoder = Encoder(embedding=embedding,
+    encoder = Encoder(num_categories=args.num_categories,
+                      embed_dim=args.embed_dim,
                       p_encoder_hidden_dim=args.pencoder_hidden_dim,
-                      o_encoder_hidden_dim=args.oencoder_hidden_dim).to(device)
-    decoder = Decoder(embedding=embedding,
+                      o_encoder_hidden_dim=args.oencoder_hidden_dim)
+    decoder = Decoder(num_categories=args.num_categories,
+                      embed_dim=args.embed_dim,
                       p_encoder_hidden_dim=args.pencoder_hidden_dim,
                       o_encoder_hidden_dim=args.oencoder_hidden_dim,
                       p_decoder_hidden_dim=args.decoder_hidden_dim,
-                      p_decoder_inner_dim=args.decoder_inner_dim).to(device)
+                      p_decoder_inner_dim=args.decoder_inner_dim)
+    model = PCRNN(encoder, decoder).to(device)
     if args.eval_train:
-        evaluate(encoder, decoder, train_loader)
+        evaluate(model, train_loader)
     if args.eval_test:
-        evaluate(encoder, decoder, test_loader)
+        evaluate(model, test_loader)

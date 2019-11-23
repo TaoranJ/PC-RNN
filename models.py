@@ -12,8 +12,10 @@ class Encoder(nn.Module):
 
     Parameters
     ----------
-    embedding: `torch.nn.Module`
-        Embedding layer for patent category.
+    num_categories: int
+        Number of num_categories to encoder.
+    embed_dim : int
+        Dimension of the embedding layer.
     p_encoder_hidden_dim : int
         Dimension of hidden state of the encoder for patent time series.
     o_encoder_hidden_dim : int
@@ -22,10 +24,11 @@ class Encoder(nn.Module):
 
     """
 
-    def __init__(self, embedding, p_encoder_hidden_dim, o_encoder_hidden_dim):
+    def __init__(self, num_categories, embed_dim, p_encoder_hidden_dim,
+                 o_encoder_hidden_dim):
         super(Encoder, self).__init__()
-        self.embed = embedding
-        p_encoder_input_dim = 1 + self.embed.embedding_dim
+        self.embed = nn.Embedding(num_categories, embed_dim, padding_idx=0)
+        p_encoder_input_dim = 1 + embed_dim
         self.p_encoder_hidden_dim = p_encoder_hidden_dim
         self.p_encoder = nn.LSTM(p_encoder_input_dim,
                                  self.p_encoder_hidden_dim,
@@ -102,8 +105,10 @@ class Decoder(nn.Module):
 
     Parameters
     ----------
-    embedding: `torch.nn.Module`
-        Embedding layer for patent category.
+    num_categories: int
+        Number of num_categories to encoder.
+    embed_dim : int
+        Dimension of the embedding layer.
     p_encoder_hidden_dim : int
         Dimension of hidden state of the encoder for patent time series.
     o_encoder_hidden_dim : int
@@ -116,11 +121,12 @@ class Decoder(nn.Module):
 
     """
 
-    def __init__(self, embedding, p_encoder_hidden_dim, o_encoder_hidden_dim,
-                 p_decoder_hidden_dim, p_decoder_inner_dim):
+    def __init__(self, num_categories, embed_dim, p_encoder_hidden_dim,
+                 o_encoder_hidden_dim, p_decoder_hidden_dim,
+                 p_decoder_inner_dim):
         super(Decoder, self).__init__()
-        self.embed = embedding
-        p_decoder_input_dim = 1 + self.embed.embedding_dim
+        self.embed = nn.Embedding(num_categories, embed_dim, padding_idx=0)
+        p_decoder_input_dim = 1 + embed_dim
         self.p_decoder = nn.LSTM(p_decoder_input_dim, p_decoder_hidden_dim,
                                  num_layers=2)
         # 1st attention layer
@@ -144,7 +150,8 @@ class Decoder(nn.Module):
         self.out = nn.Sequential(
             nn.Linear(p_decoder_hidden_dim + context_dim, p_decoder_inner_dim),
             nn.ReLU(),
-            nn.Linear(p_decoder_inner_dim, p_decoder_hidden_dim), nn.ReLU())
+            nn.Linear(p_decoder_inner_dim, p_decoder_hidden_dim),
+            nn.ReLU())
         self.marker_gen = nn.Sequential(
             nn.Linear(p_decoder_hidden_dim, self.embed.num_embeddings),
             nn.LogSoftmax(dim=2))
@@ -173,3 +180,33 @@ class Decoder(nn.Module):
         ts = self.time_gen(output)
         cat = self.marker_gen(output)
         return ts, cat, p_hn, p_hc
+
+
+class PCRNN(nn.Module):
+    """PCRNN."""
+
+    def __init__(self, encoder, decoder):
+        super(PCRNN, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+
+    def forward(self, patent_src, assignee, inventor, patent_tgt):
+        """Forward propagation"""
+
+        pencoder, aencoder, iencoder = self.encoder(patent_src, assignee,
+                                                    inventor)
+
+        tgt_ts_output, tgt_cat_output = [], []
+        ts = patent_src['pts'][-1].unsqueeze(0)
+        cat = patent_src['pcat'][-1].unsqueeze(0)
+        pencoder_outputs, phn, phc = pencoder
+        for t, _ in enumerate(patent_tgt['pts']):
+            ts, cat, phn, phc = self.decoder(ts, cat, phn, phc,
+                                             pencoder_outputs,
+                                             aencoder, iencoder)
+            tgt_ts_output.append(ts)
+            tgt_cat_output.append(cat)
+            ts, cat = ts.squeeze(-1), cat.topk(1)[1].squeeze(-1)
+        tgt_ts_output = torch.cat(tgt_ts_output, dim=0)
+        tgt_cat_output = torch.cat(tgt_cat_output, dim=0)
+        return tgt_ts_output, tgt_cat_output
