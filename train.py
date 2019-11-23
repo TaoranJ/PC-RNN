@@ -271,7 +271,7 @@ def train(model, optim, dataloader, optim_scheduler):
               'Loss: {:.4f}'.format(epoch, args.epochs,
                                     time_since(start_epoch), epoch_loss))
         if epoch_loss <= best_epoch_loss:
-            torch.save({'model': encoder.state_dict()},
+            torch.save({'model': model.state_dict()},
                        args.checkpoint_path + '.best')
             best_epoch_loss = epoch_loss
         epoch_losses.append(epoch_loss)
