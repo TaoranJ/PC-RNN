@@ -79,24 +79,14 @@ class Encoder(nn.Module):
         a_outputs, _ = pad_packed_sequence(a_outputs)
         a_outputs = a_outputs[:, :, :self.o_encoder_hidden_dim] \
             + a_outputs[:, :, self.o_encoder_hidden_dim:]
-        a_outputs = [(ix, silice)
-                     for ix, silice in zip(a_org_idx,
-                                           a_outputs.transpose(0, 1))]
-        a_outputs = sorted(a_outputs, key=lambda x: x[0])
-        a_outputs = torch.cat(
-                [e[1].unsqueeze(1) for e in a_outputs], dim=1)
+        a_outputs = a_outputs[:, a_org_idx, :]
         # Encoder 3:
         i_inputs = pack_padded_sequence(i_ts.unsqueeze(-1), i_length)
         i_outputs, _ = self.i_encoder(i_inputs)
         i_outputs, _ = pad_packed_sequence(i_outputs)
         i_outputs = i_outputs[:, :, :self.o_encoder_hidden_dim] \
             + i_outputs[:, :, self.o_encoder_hidden_dim:]
-        i_outputs = [(ix, silice)
-                     for ix, silice in zip(i_org_idx,
-                                           i_outputs.transpose(0, 1))]
-        i_outputs = sorted(i_outputs, key=lambda x: x[0])
-        i_outputs = torch.cat(
-                [e[1].unsqueeze(1) for e in i_outputs], dim=1)
+        i_outputs = i_outputs[:, i_org_idx, :]
         return (p_outputs, p_hn[:2], p_hc[:2]), a_outputs, i_outputs
 
 
@@ -130,18 +120,14 @@ class Decoder(nn.Module):
         self.p_decoder = nn.LSTM(p_decoder_input_dim, p_decoder_hidden_dim,
                                  num_layers=2)
         # 1st attention layer
-        self.p_attn = GlobalAttn('concat', p_encoder_hidden_dim,
-                                 p_decoder_hidden_dim)
-        self.a_attn = GlobalAttn('concat', o_encoder_hidden_dim,
-                                 p_decoder_hidden_dim)
-        self.i_attn = GlobalAttn('concat', o_encoder_hidden_dim,
-                                 p_decoder_hidden_dim)
+        self.p_attn = GlobalAttn(p_encoder_hidden_dim, p_decoder_hidden_dim)
+        self.a_attn = GlobalAttn(o_encoder_hidden_dim, p_decoder_hidden_dim)
+        self.i_attn = GlobalAttn(o_encoder_hidden_dim, p_decoder_hidden_dim)
         # 2nd attention layer
         self.p2o = nn.Sequential(
                 nn.Linear(p_encoder_hidden_dim, o_encoder_hidden_dim),
                 nn.ReLU())
-        self.attn = GlobalAttn('concat', o_encoder_hidden_dim,
-                               p_decoder_hidden_dim)
+        self.attn = GlobalAttn(o_encoder_hidden_dim, p_decoder_hidden_dim)
         self.o2p = nn.Sequential(
                 nn.Linear(o_encoder_hidden_dim, p_decoder_hidden_dim),
                 nn.ReLU())

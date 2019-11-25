@@ -46,8 +46,10 @@ pparser.add_argument('--clip', type=float, default=50.0,
 # ================================= Training ==================================
 # =============================================================================
 pparser.add_argument('--epochs', type=int, default=10, help='Epochs')
-pparser.add_argument('--batch-size', type=int, default=256,
+pparser.add_argument('--batch-size', type=int, default=1024,
                      help='Minibatch size')
+pparser.add_argument('--min-batch', type=int, default=256,
+                     help='Drop this minibatch if it\'s too small')
 pparser.add_argument('--checkpoint-path', type=str, default='checkpoint.pth',
                      help='Checkpoint path.')
 pparser.add_argument('--tune-lr', action='store_true', help='tune lr?')
@@ -79,7 +81,7 @@ def generate_checkpoint_path():
 # =============================================================================
 # =============================== Load dataset ================================
 # =============================================================================
-train_dataset, test_dataset, num_categories = load_dataset(args)
+train_dataset, test_dataset, num_categories = load_dataset(args, max_len=100)
 args.num_categories = num_categories + 1  # add category 0 for padding
 train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size,
@@ -108,7 +110,8 @@ model = PCRNN(encoder, decoder).to(device)
 optim = optimizer.Adam(model.parameters(), lr=args.lr,
                        weight_decay=args.weight_decay)
 optim_scheduler = optimizer.lr_scheduler.ReduceLROnPlateau(
-        optim, patience=10, factor=.5, min_lr=.0005)
+        optim, patience=3, threshold=1000, threshold_mode='abs', min_lr=.005,
+        factor=0.5, verbose=True)
 generate_checkpoint_path()
 
 
@@ -263,6 +266,8 @@ def train(model, optim, dataloader, optim_scheduler):
     epoch_losses = []
     for epoch in range(1, args.epochs + 1):
         for batch in dataloader:
+            if batch[0].size(1) < args.min_batch:
+                continue
             loss = train_step(model, optim, batch)
             epoch_loss += loss
         if args.tune_lr:
@@ -271,7 +276,8 @@ def train(model, optim, dataloader, optim_scheduler):
               'Loss: {:.4f}'.format(epoch, args.epochs,
                                     time_since(start_epoch), epoch_loss))
         if epoch_loss <= best_epoch_loss:
-            torch.save({'model': model.state_dict()},
+            torch.save({'model': model.state_dict(),
+                        'optimizer': optim.state_dict()},
                        args.checkpoint_path + '.best')
             best_epoch_loss = epoch_loss
         epoch_losses.append(epoch_loss)
@@ -282,7 +288,6 @@ def train(model, optim, dataloader, optim_scheduler):
 # =============================================================================
 # ============================== Evaluate model ===============================
 # =============================================================================
-
 def collect_results(tgt_ts_output, tgt_cat_output, patent_tgt):
     """Prepare results and ground truth for evaluation.
 
@@ -296,7 +301,6 @@ def collect_results(tgt_ts_output, tgt_cat_output, patent_tgt):
     patent_tgt : dict
         Ground truth data for patent prediction including real timestamp,
         category and mask.
-
     Returns
     -------
     mae : :class:`torch.Tensor`
@@ -386,8 +390,10 @@ def evaluate(model, dataloader):
 if os.path.exists(args.checkpoint_path):  # continue previous training
     checkpoint = torch.load(args.checkpoint_path)
     model.load_state_dict(checkpoint['model'])
+    optim.load_state_dict(checkpoint['optimizer'])
 model = train(model, optim, train_loader, optim_scheduler)
-torch.save({'model': model.state_dict()}, args.checkpoint_path)
+torch.save({'model': model.state_dict(), 'optimizer': optim.state_dict()},
+           args.checkpoint_path)
 
 if args.eval_train or args.eval_test:   # evaluate
     if args.use_best:
