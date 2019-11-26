@@ -4,7 +4,7 @@ The official `Pytorch` implementation of `PC-RNN` proposed in paper "Patent Cita
 
 ## Installation and Usage
 
-+ Install `Pytorch` (tested on 1.0.0), please refer to the [official website](https://pytorch.org/get-started/locally/) for further details.
++ Install `Pytorch` (tested on >= 1.0.0), please refer to the [official website](https://pytorch.org/get-started/locally/) for further details.
 + Install `numpy`
 
 Multiple hyperparameters (e.g., dimension of hidden state) are tunable in the model, see `train.py` for details. Run `bash run.sh` for a quickstart.
@@ -18,7 +18,7 @@ Multiple hyperparameters (e.g., dimension of hidden state) are tunable in the mo
 
 ## Citing
 
-If you used this repo in your research, please cite "[Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks](taoranj.github.io/files/ijcai2019.pdf)".
+If you used data or codes in this repo in your research, please cite "[Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks](taoranj.github.io/files/ijcai2019.pdf)".
 
 ```bib
 @inproceedings{DBLP:conf/ijcai/JiCSFLR19,
