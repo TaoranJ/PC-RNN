@@ -36,7 +36,7 @@ eps = torch.tensor(1e-12)  # Replace zero with this small number
 # ============================== Define dataset ===============================
 # =============================================================================
 
-def load_csv():
+def load_csv(max_len):
     """Load raw csv file. Read 5 csv files configured in data_config.
 
     Returns
@@ -47,9 +47,15 @@ def load_csv():
 
     """
 
-    return {key: [[config[1](e) for e in row]
-                  for row in csv.reader(open(config[0], 'r'), delimiter=',')]
-            for key, config in data_config.items()}
+    rets = {}
+    for key, config in data_config.items():
+        if key in ['pat_ts', 'pat_cat', 'pat_subcat']:
+            rets[key] = [[config[1](e) for e in row[:max_len]]
+                         for row in csv.reader(open(config[0], 'r'))]
+        else:
+            rets[key] = [[config[1](e) for e in row[-max_len:]]
+                         for row in csv.reader(open(config[0], 'r'))]
+    return rets
 
 
 def timestamp_normalization(streams):
@@ -138,7 +144,7 @@ class PatentDataset(Dataset):
         return src_pts, tgt_pts, src_pcat, tgt_pcat, ats, its
 
 
-def load_dataset(args, tr_ratio=.8, norm=True):
+def load_dataset(args, tr_ratio=.8, norm=True, max_len=200):
     """Load dataset given path.
 
     Workflow: load_scv -> timestamp_normalization -> split_train_test ->
@@ -155,7 +161,7 @@ def load_dataset(args, tr_ratio=.8, norm=True):
 
     """
 
-    streams = load_csv()
+    streams = load_csv(max_len)
     if norm:  # Normalization timestamp
         streams = timestamp_normalization(streams)
     # Get training and test set
