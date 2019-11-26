@@ -18,7 +18,7 @@ Multiple hyperparameters (e.g., dimension of hidden state) are tunable in the mo
 
 ## Citing
 
-If you used this repo in your research, please cite "[Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks](taoranj.github.io/files/ijcai2019.pdf)".
+If you used data or codes in this repo in your research, please cite "[Patent Citation Dynamics Modeling via Multi-Attention Recurrent Networks](taoranj.github.io/files/ijcai2019.pdf)".
 
 ```bib
 @inproceedings{DBLP:conf/ijcai/JiCSFLR19,
