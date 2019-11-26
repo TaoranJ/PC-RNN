@@ -4,7 +4,7 @@ The official `Pytorch` implementation of `PC-RNN` proposed in paper "Patent Cita
 
 ## Installation and Usage
 
-+ Install `Pytorch` (tested on 1.0.0), please refer to the [official website](https://pytorch.org/get-started/locally/) for further details.
++ Install `Pytorch` (tested on >= 1.0.0), please refer to the [official website](https://pytorch.org/get-started/locally/) for further details.
 + Install `numpy`
 
 Multiple hyperparameters (e.g., dimension of hidden state) are tunable in the model, see `train.py` for details. Run `bash run.sh` for a quickstart.
