@@ -46,3 +46,7 @@ If you used data or codes in this repo in your research, please cite "[Patent Ci
 ## Copyright and License
 
 Codes in this repo released under MIT license.
+
+## Collaboration
+
+Feel free to contact me (see my profile for email address) if you're interested in related research topics or want to use patent-related data.
